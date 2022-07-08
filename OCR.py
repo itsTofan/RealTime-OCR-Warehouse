@@ -8,10 +8,19 @@ from threading import Thread
 
 import cv2
 import numpy
+import pandas
 import pytesseract
 
 import Linguist
+from pandas import *
+import openpyxl
 
+xls = pandas.read_excel(r'C:\Users\3115storeMRM\PycharmProjects\RealTime-OCR-master\store.xlsx')
+store = xls.to_dict('records')
+
+list_part = []
+for i in range(len(store)):
+    list_part.append(list(store[i].values()))
 
 def tesseract_location(root):
     """
@@ -293,6 +302,22 @@ def views(mode: int, confidence: int):
 
     return conf_thresh, color
 
+def match_text (text):
+    text = str(text).replace(" ", "")
+    text = str(text).replace("-", "")
+    text = str(text).replace("/", "")
+    text = text.upper()
+    if any(text in sublist for sublist in list_part):
+        # print('yes')
+        matches = [match for match in list_part if text in match]
+        tes = str(matches).split("location", 1)[1]
+        tes = tes[4:-1]
+        tes = str(tes).replace("'", "")
+        tes = str(tes).replace("]", "")
+        return(" @ " + tes)
+    else:
+        return ""
+
 
 def put_ocr_boxes(boxes, frame, height, crop_width=0, crop_height=0, view_mode=1):
     """
@@ -324,14 +349,18 @@ def put_ocr_boxes(boxes, frame, height, crop_width=0, crop_height=0, view_mode=1
                     x += crop_width  # If tesseract was performed on a cropped image we need to 'convert' to full frame
                     y += crop_height
 
-                    conf_thresh, color = views(view_mode, int(conf))
+                    conf_thresh, color = views(view_mode, int(float(conf)))
 
-                    if int(conf) > conf_thresh:
+                    if int(float(conf)) > conf_thresh:
                         cv2.rectangle(frame, (x, y), (w + x, h + y), color, thickness=1)
                         text = text + ' ' + word
 
         if text.isascii():  # CV2 is only able to display ascii chars at the moment
-            cv2.putText(frame, text, (5, height - 5), cv2.FONT_HERSHEY_DUPLEX, 1, (200, 200, 200))
+            text1 = match_text(text)
+            if (text1!=""):
+                text = text + text1
+
+            cv2.putText(frame, text, (5, height - 5), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 255))
 
     return frame, text
 
@@ -449,8 +478,8 @@ def ocr_stream(crop: list[int, int], source: int = 0, view_mode: int = 1, langua
         frame = put_rate(frame, cps1.rate())
         frame = put_language(frame, lang_name)
         frame = put_crop_box(frame, img_wi, img_hi, cropx, cropy)
-        frame, text = put_ocr_boxes(ocr.boxes, frame, img_hi,
-                                    crop_width=cropx, crop_height=cropy, view_mode=view_mode)
+        frame, text = put_ocr_boxes(ocr.boxes, frame, img_hi, crop_width=cropx, crop_height=cropy, view_mode=view_mode)
+
         # # # # # # # # # # # # # # # # # # # # # # # #
 
         # Photo capture:
@@ -460,3 +489,5 @@ def ocr_stream(crop: list[int, int], source: int = 0, view_mode: int = 1, langua
 
         cv2.imshow("realtime OCR", frame)
         cps1.increment()  # Incrementation for rate counter
+        if " @ " in text:
+            cv2.waitKey(2000)
